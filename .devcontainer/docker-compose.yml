@@ -12,12 +12,6 @@ services:
       NODE_ENV: development
       PORT: 3000
       JWT_SECRET: codespaces-development-secret-change-before-production-2026
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_USER: root
-      DB_PASSWORD: codespaces-local-mysql-password
-      DB_NAME: smart_dairy
-      DB_SSL: "false"
 
   db:
     image: mysql:8.0

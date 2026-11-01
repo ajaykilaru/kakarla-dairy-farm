@@ -14,6 +14,26 @@
       "onAutoForward": "openBrowser"
     }
   },
+  "secrets": {
+    "AIVEN_DB_HOST": {
+      "description": "Aiven MySQL service hostname"
+    },
+    "AIVEN_DB_PORT": {
+      "description": "Aiven MySQL service port"
+    },
+    "AIVEN_DB_USER": {
+      "description": "Aiven MySQL application username"
+    },
+    "AIVEN_DB_PASSWORD": {
+      "description": "Aiven MySQL password"
+    },
+    "AIVEN_DB_NAME": {
+      "description": "Aiven MySQL database name"
+    },
+    "AIVEN_DB_CA": {
+      "description": "Aiven MySQL CA certificate"
+    }
+  },
   "postCreateCommand": "npm install",
-  "postStartCommand": "bash -lc 'if ! pgrep -f \"[n]pm run dev\" >/dev/null; then nohup npm run dev > /tmp/kakarla-dairy-farm.log 2>&1 </dev/null & fi'"
+  "postStartCommand": "bash -lc 'if ! pgrep -f \"[n]pm run dev\" >/dev/null; then nohup bash scripts/start-codespaces.sh > /tmp/kakarla-dairy-farm.log 2>&1 </dev/null & fi'"
 }
