@@ -1,7 +1,7 @@
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, ".env") });
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const mysql = require("mysql2/promise");
 const QRCode = require("qrcode");
 const { randomUUID, randomInt } = require("crypto");
@@ -11,8 +11,7 @@ const jwt = require("jsonwebtoken");
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
-const frontendDist = path.resolve(__dirname, "../frontend/dist");
-app.use(express.static(frontendDist));
+app.use(express.static(path.join(__dirname, "dist")));
 
 const dbConfigHint = "Copy .env.example to .env and set valid DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, and DB_NAME values before starting the app.";
 const dbErrorMessage = (err) => {
@@ -1156,7 +1155,7 @@ app.put("/api/customers/:id/assignment", requireRoles("super_admin"), asyncRoute
 
 app.get("*", (req, res, next) => {
   if (req.path.startsWith("/api/")) return res.status(404).json({ error: "API endpoint not found." });
-  res.sendFile(path.join(frontendDist, "index.html"), err => { if (err) next(err); });
+  res.sendFile(path.join(__dirname, "dist", "index.html"), err => { if (err) next(err); });
 });
 
 app.use((err, req, res, next) => {
