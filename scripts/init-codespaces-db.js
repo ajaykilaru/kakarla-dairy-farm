@@ -29,7 +29,12 @@ async function main() {
         "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customers'",
         [databaseName]
       );
-      if (tables.length) return;
+      if (tables.length) {
+        await connection.changeUser({ database: databaseName });
+        const supplierMigration = fs.readFileSync(path.join(__dirname, "..", "database", "migrations", "005_suppliers.sql"), "utf8");
+        await connection.query(supplierMigration);
+        return;
+      }
       throw new Error(`Database ${databaseName} already exists but its schema is incomplete; refusing to modify it automatically.`);
     }
 

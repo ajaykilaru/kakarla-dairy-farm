@@ -19,6 +19,7 @@ A responsive full-stack starter combining the **screen-flow concepts** from `Mil
 - Customer list/search/create/archive API foundation
 - Set or reset customer passwords; customers sign in with their phone number
 - Create delivery-boy login accounts
+- View supplier accounts and set or change their sign-in passwords
 - Assign/reassign customers
 - Current cow/buffalo milk rates
 - Delivery records
@@ -48,6 +49,10 @@ A responsive full-stack starter combining the **screen-flow concepts** from `Mil
 - Open support tickets to the owner or assigned delivery partner and reply to the ticket conversation
 - Select morning, evening, or both delivery routines when a customer profile is created
 - Customer APIs use the authenticated account's linked `customer_id`; the client cannot choose another customer id for these self-service views
+
+### Supplier
+- Sign in using the supplier username and a password set by the owner
+- View only the supplier's own registered contact details and assigned collection list
 
 ## Important implementation boundaries
 
@@ -84,7 +89,7 @@ For a hosted MySQL provider, use the provider's hostname, port, user, password a
 
 Open MySQL Workbench, connect to the intended database server, and run `database/schema.sql`.
 
-For a provider that does not permit `CREATE DATABASE`, create/select the database in Workbench first, then remove the first `CREATE DATABASE` and `USE smart_dairy` lines before running the remaining schema. Back up any existing database before running schema/migration changes. For a database from the older starter, inspect its columns first and run `database/migrations/001_auth_roles.sql` only if the role/customer-link/assignment columns and foreign key are not already present. Then run `database/migrations/002_phone_schedules_messages.sql` once to add phone login, delivery schedules, in-app messages and password-reset tokens. Run `database/migrations/003_delivery_boy_notifications.sql` once to enable in-app messages addressed to delivery partners, then run `database/migrations/004_customer_support_tickets.sql` once to add customer support tickets and replies. Do not run migrations against a database already created from the updated schema.
+For a provider that does not permit `CREATE DATABASE`, create/select the database in Workbench first, then remove the first `CREATE DATABASE` and `USE smart_dairy` lines before running the remaining schema. Back up any existing database before running schema/migration changes. For a database from the older starter, inspect its columns first and run `database/migrations/001_auth_roles.sql` only if the role/customer-link/assignment columns and foreign key are not already present. Then run `database/migrations/002_phone_schedules_messages.sql` once to add phone login, delivery schedules, in-app messages and password-reset tokens. Run `database/migrations/003_delivery_boy_notifications.sql` once to enable in-app messages addressed to delivery partners, then run `database/migrations/004_customer_support_tickets.sql` once to add customer support tickets and replies. For an existing app database, run `database/migrations/005_suppliers.sql` once to add the supplier login table. Do not run migrations against a database already created from the updated schema.
 
 Customer password recovery uses a configurable SMS gateway. Set `SMS_GATEWAY_URL` to an endpoint accepting JSON `{ "to": "phone", "message": "..." }`; optionally set `SMS_GATEWAY_API_KEY` for a Bearer token. Leave these unset if password recovery by SMS is not configured.
 
@@ -144,6 +149,8 @@ After deployment, verify:
 - Super Admin: `/api/dashboard`, `/api/customers`, `/api/delivery-boys`, `/api/customers/:id/assignment`, `/api/deliveries`, `/api/rates`, `/api/payments`, `/api/reports/monthly`
 - Delivery Boy: `/api/delivery/overview`, `/api/delivery/customers`, `/api/delivery/complete`, `/api/delivery/deliveries`
 - Customer: `/api/customer/summary`, `/api/customer/deliveries`, `/api/customer/billing`, `/api/customer/payments`, `/api/customer/qr`
+- Supplier: `/api/supplier/profile` (own profile only)
+- Owner supplier management: `/api/suppliers`, `/api/suppliers/:id/password`
 - Health: `GET /api/health`
 
 All API requests except login and health require a signed-in JWT session. Role restrictions are enforced on the server, not just hidden in the UI.
@@ -223,4 +230,4 @@ This repository includes a Codespaces development environment with Node.js and M
 
 By default, the Codespace uses its private MySQL service and initializes the schema from `database/schema.sql`. To connect the app to Aiven instead, create these GitHub Codespaces secrets for this repository: `AIVEN_DB_HOST`, `AIVEN_DB_PORT`, `AIVEN_DB_USER`, `AIVEN_DB_PASSWORD`, `AIVEN_DB_NAME` (use `smart_dairy`), and `AIVEN_DB_CA` (paste the Aiven CA certificate). Restart the Codespace after saving the secrets. The startup script uses TLS, creates the schema only when the selected database does not exist, and then starts the app. An existing incomplete database is left untouched and reported for review.
 
-Each new database starts without customer or production records. This public repository excludes the private customer export. Create an owner account inside the Codespace by setting `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in its terminal, then run `npm run create-admin`. Use a private, access-controlled database user and unique secrets for any shared or production deployment.
+Each new database starts without customer or production records. The supplier table schema is initialized automatically, including for existing Codespaces. Supplier contact data and password hashes are kept in the database and are not added to the source repository. Create an owner account inside the Codespace by setting `ADMIN_NAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` in its terminal, then run `npm run create-admin`. Use a private, access-controlled database user and unique secrets for any shared or production deployment.

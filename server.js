@@ -78,6 +78,16 @@ async function authenticate(req, res, next) {
     verified = jwt.verify(token, JWT_SECRET || "development-only-change-this-secret");
   } catch (_) { return res.status(401).json({ error: "Session expired or invalid. Please sign in again." }); }
   try {
+    if (verified.role === "supplier") {
+      const [suppliers] = await pool.execute(
+        "SELECT supplier_id,name,username,phone,list_name FROM suppliers WHERE supplier_id=? AND password_hash IS NOT NULL LIMIT 1",
+        [verified.supplier_id || verified.id]
+      );
+      if (!suppliers.length) return res.status(401).json({ error: "This supplier account is inactive or no longer available. Please sign in again." });
+      const supplier = suppliers[0];
+      req.user = { ...verified, id: supplier.supplier_id, supplier_id: supplier.supplier_id, name: supplier.name, email: supplier.username, phone: supplier.phone, list_name: supplier.list_name, role: "supplier" };
+      return next();
+    }
     const [users] = await pool.execute(
       `SELECT u.id,u.name,u.email,u.role,u.customer_id
        FROM users u
@@ -222,11 +232,18 @@ app.post("/api/auth/login", asyncRoute(async (req, res) => {
        (c.phone=? AND u.role='customer')
      LIMIT 1`, [email, phone, phone]
   );
-  const user = rows[0];
+  let user = rows[0];
+  if (!user) {
+    const [suppliers] = await pool.execute(
+      "SELECT supplier_id AS id,name,username AS email,password_hash,phone,list_name FROM suppliers WHERE LOWER(username)=? LIMIT 1",
+      [email]
+    );
+    if (suppliers.length) user = { ...suppliers[0], role: "supplier", active: true, supplier_id: suppliers[0].id, customer_id: null };
+  }
   if (!user || !user.active || !user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
     return res.status(401).json({ error: "Invalid email or password." });
   }
-  const token = jwt.sign({ id: user.id, name: user.name, email: user.email, role: user.role, customer_id: user.customer_id || null },
+  const token = jwt.sign({ id: user.id, ...(user.role === "supplier" ? { supplier_id: user.supplier_id } : {}), name: user.name, email: user.email, role: user.role, customer_id: user.customer_id || null },
     JWT_SECRET || "development-only-change-this-secret", { expiresIn: "8h", issuer: "smart-dairy" });
   res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, customer_id: user.customer_id || null } });
 }));
@@ -308,6 +325,12 @@ app.use("/api", (req, res, next) => {
   if (req.path === "/health" || req.path === "/auth/login" || req.path === "/auth/me" || req.path === "/auth/password-reset/request" || req.path === "/auth/password-reset/confirm") return next();
   return authenticate(req, res, next);
 });
+app.use("/api", (req, res, next) => {
+  if (req.user?.role === "supplier" && req.path !== "/supplier/profile") {
+    return res.status(403).json({ error: "Supplier accounts can only view their own supplier profile." });
+  }
+  next();
+});
 
 // Role boundaries: only the Super Admin can use the legacy global-management/reporting APIs.
 // Delivery Boy and Customer accounts receive access only through explicitly scoped endpoints.
@@ -316,6 +339,10 @@ app.use("/api/customers", requireRoles("super_admin"));
 app.use("/api/reports", requireRoles("super_admin"));
 app.use("/api/deliveries", requireRoles("super_admin"));
 app.use("/api/billing", requireRoles("super_admin"));
+
+app.get("/api/supplier/profile", requireRoles("supplier"), (req, res) => {
+  res.json({ supplier_id: req.user.supplier_id, name: req.user.name, username: req.user.email, phone: req.user.phone, list_name: req.user.list_name });
+});
 
 app.get("/api/dashboard", asyncRoute(async (req, res) => {
   const [[customers]] = await pool.query("SELECT COUNT(*) AS total, COALESCE(SUM(morning_enabled + evening_enabled),0) AS scheduled_routines FROM customers WHERE active = TRUE");
@@ -1114,6 +1141,18 @@ app.delete("/api/customer/notifications/:id", requireRoles("customer"), asyncRou
 
 // Admin team and assignment endpoints.
 app.get("/api/delivery-boys", requireRoles("super_admin"), asyncRoute(async(req,res)=>{const [rows]=await pool.query("SELECT id,name,email,phone,active,(email IS NOT NULL AND password_hash IS NOT NULL) AS login_enabled FROM users WHERE role='delivery_boy' AND active=TRUE ORDER BY name");res.json(rows)}));
+app.get("/api/suppliers", requireRoles("super_admin"), asyncRoute(async (req, res) => {
+  const [rows] = await pool.query("SELECT supplier_id AS id,name,username,phone,list_name,(password_hash IS NOT NULL) AS login_enabled FROM suppliers ORDER BY supplier_id");
+  res.json(rows);
+}));
+app.put("/api/suppliers/:id/password", requireRoles("super_admin"), asyncRoute(async (req, res) => {
+  const password = String(req.body.password || "");
+  if (password.length < 8 || password.length > 128) return res.status(400).json({ error: "Supplier password must be 8 to 128 characters." });
+  const passwordHash = await bcrypt.hash(password, 12);
+  const [result] = await pool.execute("UPDATE suppliers SET password_hash=? WHERE supplier_id=?", [passwordHash, req.params.id]);
+  if (!result.affectedRows) return res.status(404).json({ error: "Supplier not found." });
+  res.json({ ok: true, login_enabled: true });
+}));
 app.post("/api/delivery-boys", requireRoles("super_admin"), asyncRoute(async(req,res)=>{const {name,email,password,phone}=req.body;const cleanPhone=String(phone||'').replace(/\D/g,'');if(!String(name||'').trim()||!String(email||'').trim()||cleanPhone.length<7||String(password||'').length<8)return res.status(400).json({error:"Name, email, valid phone number and password of at least 8 characters are required."});await ensureUserContactAvailable(cleanPhone,email);const hash=await bcrypt.hash(String(password),12);const [r]=await pool.execute("INSERT INTO users (name,email,phone,password_hash,role) VALUES (?,?,?,?,'delivery_boy')",[String(name).trim(),String(email).trim().toLowerCase(),cleanPhone,hash]);res.status(201).json({id:r.insertId,name,email,phone:cleanPhone,role:'delivery_boy'})}));
 app.delete("/api/delivery-boys/:id", requireRoles("super_admin"), asyncRoute(async (req, res) => {
   const id = Number(req.params.id);

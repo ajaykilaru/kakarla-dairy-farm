@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS suppliers (
+  supplier_id INT NOT NULL PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  list_name VARCHAR(20) NULL,
+  username VARCHAR(100) NULL UNIQUE,
+  password_hash VARCHAR(255) NULL
+);

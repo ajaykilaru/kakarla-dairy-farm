@@ -5,7 +5,7 @@ type User = {
   id: number;
   name: string;
   email: string;
-  role: 'super_admin' | 'delivery_boy' | 'customer';
+  role: 'super_admin' | 'delivery_boy' | 'customer' | 'supplier';
   customer_id?: number | null;
 };
 type Customer = {
@@ -43,6 +43,7 @@ type DeliveryBoy = {
   active: boolean;
   login_enabled: boolean;
 };
+type Supplier = { id: number; name: string; username: string | null; phone: string; list_name: string | null; login_enabled: boolean };
 type Rate = {
   milk_type: string;
   rate_per_litre: number;
@@ -287,6 +288,8 @@ export default function App() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [boys, setBoys] = useState<DeliveryBoy[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierProfile, setSupplierProfile] = useState<Supplier | null>(null);
   const [rates, setRates] = useState<Rate[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [reportSummary, setReportSummary] = useState<any>({});
@@ -332,6 +335,8 @@ export default function App() {
     password: ''
   });
   const [customerLoginPassword, setCustomerLoginPassword] = useState('');
+  const [supplierToChangePassword, setSupplierToChangePassword] = useState<Supplier | null>(null);
+  const [supplierPassword, setSupplierPassword] = useState('');
   const [ticketRecipientType, setTicketRecipientType] = useState<'owner' | 'delivery_boy'>('owner');
   const [deliveryForm, setDeliveryForm] = useState({
     customer_id: '',
@@ -356,19 +361,21 @@ export default function App() {
   const isOwner = role === 'super_admin';
   const isDelivery = role === 'delivery_boy';
   const isCustomer = role === 'customer';
+  const isSupplier = role === 'supplier';
   const activeBoys = boys.filter(boy => boy.active);
-  const nav = useMemo(() => isOwner ? [['Dashboard', <LayoutDashboard />], ['Customers', <Users />], ['Delivery Boys', <Bike />], ['Assignments', <ShieldCheck />], ['Deliveries', <PackageCheck />], ['Milk Pricing', <Milk />], ['Payments', <Wallet />], ['Monthly Billing', <ReceiptText />], ['Reports', <FileBarChart />], ['Notifications', <Bell />], ['Profile', <UserRound />]] : isDelivery ? [['Dashboard', <Home />], ['My Customers', <Users />], ['Scanner', <ScanLine />], ['Collect Payment', <CreditCard />], ['Notifications', <Bell />], ['Profile', <UserRound />]] : [['Dashboard', <Home />], ['Delivery History', <PackageCheck />], ['Bills & Payments', <ReceiptText />], ['My QR Code', <QrCode />], ['Notifications', <Bell />], ['Profile', <UserRound />]], [role]);
+  const nav = useMemo(() => isOwner ? [['Dashboard', <LayoutDashboard />], ['Customers', <Users />], ['Delivery Boys', <Bike />], ['Suppliers', <Milk />], ['Assignments', <ShieldCheck />], ['Deliveries', <PackageCheck />], ['Milk Pricing', <Milk />], ['Payments', <Wallet />], ['Monthly Billing', <ReceiptText />], ['Reports', <FileBarChart />], ['Notifications', <Bell />], ['Profile', <UserRound />]] : isDelivery ? [['Dashboard', <Home />], ['My Customers', <Users />], ['Scanner', <ScanLine />], ['Collect Payment', <CreditCard />], ['Notifications', <Bell />], ['Profile', <UserRound />]] : isSupplier ? [['Dashboard', <Home />], ['Profile', <UserRound />]] : [['Dashboard', <Home />], ['Delivery History', <PackageCheck />], ['Bills & Payments', <ReceiptText />], ['My QR Code', <QrCode />], ['Notifications', <Bell />], ['Profile', <UserRound />]], [role]);
   const load = async (t = token, u = user) => {
     if (!t || !u) return;
     setLoading(true);
     setError('');
     try {
       if (u.role === 'super_admin') {
-        const [d, c, del, b, r, rep, p, n, tickets] = await Promise.all([api('/dashboard', t), api('/customers', t), api('/deliveries', t), api('/delivery-boys', t), api('/rates', t), api(`/reports/monthly?month=${month}`, t), api('/payments', t), api('/notifications', t), api('/support-tickets', t)]);
+        const [d, c, del, b, s, r, rep, p, n, tickets] = await Promise.all([api('/dashboard', t), api('/customers', t), api('/deliveries', t), api('/delivery-boys', t), api('/suppliers', t), api('/rates', t), api(`/reports/monthly?month=${month}`, t), api('/payments', t), api('/notifications', t), api('/support-tickets', t)]);
         setOverview(d);
         setCustomers(c);
         setDeliveries(del);
         setBoys(b);
+        setSuppliers(s);
         setRates(r);
         setBills(rep.rows || []);
         setReportSummary(rep.summary || {});
@@ -384,6 +391,8 @@ export default function App() {
         setPayments(p);
         setNotifications(n);
         setSupportTickets(tickets);
+      } else if (u.role === 'supplier') {
+        setSupplierProfile(await api('/supplier/profile', t));
       } else {
         const [d, del, p, qr, n, b, tickets] = await Promise.all([api('/customer/summary', t), api('/customer/deliveries', t), api('/customer/payments', t), api('/customer/qr', t), api('/customer/notifications', t), api('/customer/billing', t), api('/support-tickets', t)]);
         setOverview(d);
@@ -517,12 +526,28 @@ export default function App() {
     setToken('');
     setUser(null);
     setCustomers([]);
+    setSuppliers([]);
+    setSupplierProfile(null);
     setDeliveries([]);
     setPage('Dashboard');
     setError('');
     setSuccess('');
   };
   const refresh = () => load();
+  const saveSupplierPassword = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!supplierToChangePassword) return;
+    try {
+      await api(`/suppliers/${supplierToChangePassword.id}/password`, token, { method: 'PUT', body: JSON.stringify({ password: supplierPassword }) });
+      setSuppliers(current => current.map(supplier => supplier.id === supplierToChangePassword.id ? { ...supplier, login_enabled: true } : supplier));
+      setModal('');
+      setSupplierToChangePassword(null);
+      setSupplierPassword('');
+      flash(`Login password updated for ${supplierToChangePassword.name}`);
+    } catch (e: any) {
+      setError(e.message || 'Could not update supplier password');
+    }
+  };
   const closeCustomerQr = () => setPage('Dashboard');
   const flash = (message: string) => {
     setSuccess(message);
@@ -882,7 +907,7 @@ export default function App() {
   const scheduledCustomers = customers.filter(customer => customer[`${selectedDeliveryRoutine}_enabled`]);
   const remainingScheduledCustomers = scheduledCustomers.filter(customer => !deliveredCustomerIdsForRoutine.has(Number(customer.id)));
   const completedScheduledCount = scheduledCustomers.length - remainingScheduledCustomers.length;
-  const title = page === 'Dashboard' ? isOwner ? 'Owner dashboard' : isDelivery ? 'My route' : 'My dairy account' : page;
+  const title = page === 'Dashboard' ? isOwner ? 'Owner dashboard' : isDelivery ? 'My route' : isSupplier ? 'Supplier dashboard' : 'My dairy account' : page;
   const currentDateLabel = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
   if (booting) return <div className="loading-screen"><Brand /><div className="loader" /><span>Preparing your workspace…</span></div>;
   if (!user) return <LoginPanel phone={loginPhone} setPhone={setLoginPhone} password={loginPassword} setPassword={setLoginPassword} loading={loading} error={error} success={success} resetMode={resetMode} setResetMode={setResetMode} resetCodeSent={resetCodeSent} code={resetCode} setCode={setResetCode} newPassword={newPassword} setNewPassword={setNewPassword} onSignIn={signIn} onRequestReset={requestPasswordReset} onConfirmReset={confirmPasswordReset} />;
@@ -907,9 +932,9 @@ export default function App() {
     });
     setModal('customer');
   };
-  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}><Brand /><div className="workspace"><span className="workspace-logo">{isDelivery ? 'DB' : 'KD'}</span><span><b>{isOwner ? 'Kakarla Dairy Farm' : isDelivery ? 'Delivery workspace' : 'My Kakarla Dairy Farm'}</b><small>{isOwner ? 'Business workspace' : isDelivery ? 'Assigned route' : 'Customer account'}</small></span><ChevronDown size={16} /></div><div className="nav-label">WORKSPACE</div><nav>{nav.map(([name, icon]) => <button key={String(name)} onClick={() => menuClick(String(name))} className={`nav-item ${page === name ? 'active' : ''}`}>{icon}<span>{name}</span>{name === 'Notifications' && <i className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">{user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</div><div className="profile-name"><b>{user.name}</b><small>{roleLabel(user.role)}</small></div><button className="icon-btn" onClick={signOut} title="Sign out"><LogOut size={17} /></button></div></aside>
+  return <div className="app-shell"><aside className={`sidebar ${mobileNav ? 'sidebar-open' : ''}`}><Brand /><div className="workspace"><span className="workspace-logo">{isDelivery ? 'DB' : isSupplier ? 'SP' : 'KD'}</span><span><b>{isOwner ? 'Kakarla Dairy Farm' : isDelivery ? 'Delivery workspace' : isSupplier ? 'Supplier workspace' : 'My Kakarla Dairy Farm'}</b><small>{isOwner ? 'Business workspace' : isDelivery ? 'Assigned route' : isSupplier ? 'Supplier account' : 'Customer account'}</small></span><ChevronDown size={16} /></div><div className="nav-label">WORKSPACE</div><nav>{nav.map(([name, icon]) => <button key={String(name)} onClick={() => menuClick(String(name))} className={`nav-item ${page === name ? 'active' : ''}`}>{icon}<span>{name}</span>{name === 'Notifications' && <i className="nav-dot" />}</button>)}</nav><div className="sidebar-bottom"><div className="avatar">{user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</div><div className="profile-name"><b>{user.name}</b><small>{roleLabel(user.role)}</small></div><button className="icon-btn" onClick={signOut} title="Sign out"><LogOut size={17} /></button></div></aside>
  {mobileNav && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileNav(false)} />}
- <main className="main-area"><header className="topbar"><div className="topbar-left"><button className="mobile-menu" aria-label={mobileNav ? 'Close menu' : 'Open menu'} onClick={() => setMobileNav(!mobileNav)}>{mobileNav ? <X /> : <Menu />}</button><div><div className="breadcrumb">Kakarla Dairy Farm <span>/</span> {title}</div><h1>{title}</h1><p>{isOwner ? 'Your dairy operations at a glance.' : isDelivery ? 'Your assigned customers and today’s delivery progress.' : 'Your milk deliveries, bills and payments.'}</p></div></div><div className="top-actions"><button className="icon-btn" onClick={refresh} title="Refresh"><RefreshCw size={18} /></button><button className="icon-btn notification-btn" onClick={() => menuClick('Notifications')} title="Notifications"><Bell size={19} /><i /></button><button className="top-avatar top-avatar-button" onClick={() => menuClick('Profile')} title="Profile" aria-label="Open profile">{user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</button></div></header>
+ <main className="main-area"><header className="topbar"><div className="topbar-left"><button className="mobile-menu" aria-label={mobileNav ? 'Close menu' : 'Open menu'} onClick={() => setMobileNav(!mobileNav)}>{mobileNav ? <X /> : <Menu />}</button><div><div className="breadcrumb">Kakarla Dairy Farm <span>/</span> {title}</div><h1>{title}</h1><p>{isOwner ? 'Your dairy operations at a glance.' : isDelivery ? 'Your assigned customers and today’s delivery progress.' : isSupplier ? 'Your supplier account and assigned collection list.' : 'Your milk deliveries, bills and payments.'}</p></div></div><div className="top-actions"><button className="icon-btn" onClick={refresh} title="Refresh"><RefreshCw size={18} /></button><button className="icon-btn notification-btn" onClick={() => menuClick('Notifications')} title="Notifications"><Bell size={19} /><i /></button><button className="top-avatar top-avatar-button" onClick={() => menuClick('Profile')} title="Profile" aria-label="Open profile">{user.name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase()}</button></div></header>
  {error && <div className="alert alert-error"><AlertCircle size={17} />{error}<button onClick={() => setError('')}><X size={15} /></button></div>}{success && <div className="alert alert-success"><CircleCheck size={17} />{success}<button onClick={() => setSuccess('')}><X size={15} /></button></div>}{loading && <div className="thin-progress" />}
  {page === 'Dashboard' && <div className="current-date"><CalendarDays size={16} />{currentDateLabel}</div>}
  {page === 'Dashboard' && isDelivery && <section className="metrics-grid delivery-metrics-replacement">
@@ -922,6 +947,8 @@ export default function App() {
  {isDelivery && <><section className="welcome-banner delivery-banner"><div><span className="eyebrow"><Truck size={14} /> YOUR DELIVERY ROUTE</span><h2>Ready for today, {user.name.split(' ')[0]}?</h2><p>Track customers still waiting for milk in each delivery schedule. Open My Customers for full customer details and delivery actions.</p><Button variant="light" onClick={() => menuClick('My Customers')}><Users size={16} /> Open My Customers</Button></div><div className="banner-art"><Icon3D tone="mint"><Bike size={60} /></Icon3D></div></section><section className="metrics-grid"><Metric title="Assigned customers" value={String(customers.length)} note="Your current route" icon={<Users />} /><Metric title="Completed today" value={String(overview.completed_today || 0)} note="Saved deliveries" icon={<Check />} tone="mint" /><Metric title="Pending today" value={String(overview.pending_today || customers.length)} note="Customers not yet served" icon={<Clock3 />} tone="amber" /><Metric title="Litres delivered" value={`${Number(overview.litres_today || 0).toFixed(1)} L`} note="Today's total" icon={<Droplets />} tone="blue" /></section><section className="panel schedule-panel"><PanelHead title="Remaining for this schedule" subtitle="Customers are removed from this list after a delivery is recorded for the selected schedule today." action={<Button onClick={() => { setScanCode(''); setShowScanner(true); }}><ScanLine size={16} /> Scan QR</Button>} /><div className="schedule-tabs" role="tablist" aria-label="Delivery schedule"><button type="button" role="tab" aria-selected={selectedDeliveryRoutine === 'morning'} className={selectedDeliveryRoutine === 'morning' ? 'active' : ''} onClick={() => setSelectedDeliveryRoutine('morning')}>Morning</button><button type="button" role="tab" aria-selected={selectedDeliveryRoutine === 'evening'} className={selectedDeliveryRoutine === 'evening' ? 'active' : ''} onClick={() => setSelectedDeliveryRoutine('evening')}>Evening</button></div><div className="schedule-progress"><b>{completedScheduledCount} of {scheduledCustomers.length} completed</b><span>{remainingScheduledCustomers.length} remaining</span></div>{remainingScheduledCustomers.length ? <div className="schedule-customer-list">{remainingScheduledCustomers.map(customer => <article className="schedule-customer" key={customer.id}><span className="schedule-customer-avatar">{initials(customer.name)}</span><div><b>{customer.name}</b><small>{customer.phone || 'No phone'}{customer.address ? ` · ${customer.address}` : ''}</small></div><span className="schedule-waiting">Waiting</span></article>)}</div> : <div className="schedule-empty"><CircleCheck size={24} /><b>{scheduledCustomers.length ? 'All scheduled customers are served' : `No customers scheduled for ${selectedDeliveryRoutine}`}</b><span>{scheduledCustomers.length ? 'There are no remaining deliveries for this schedule today.' : 'Add or update customer routines from My Customers.'}</span></div>}</section></>}
  {isCustomer && <><section className="customer-hero"><div><span className="eyebrow"><Sparkles size={14} /> YOUR MILKMATE ACCOUNT</span><h2>Good to see you, {user.name.split(' ')[0]}.</h2><p>Your deliveries and monthly account, all in one place.</p><Button variant="light" onClick={() => menuClick('My QR Code')}><QrCode size={16} /> Show my QR code</Button></div><div className="qr-mini">{qrData ? <img src={qrData} alt="Customer QR code" /> : <QrCode size={75} />}<small>YOUR DELIVERY QR</small></div></section><section className="metrics-grid"><Metric title="Month-to-date bill" value={money(overview.summary?.total)} note={`${Number(overview.summary?.litres || 0).toFixed(1)} litres delivered`} icon={<ReceiptText />} /><Metric title="Payments received" value={money(overview.summary?.paid)} note="This billing period" icon={<Wallet />} tone="mint" /><Metric title="Outstanding balance" value={money(overview.summary?.balance)} note="Current balance" icon={<CircleDollarSign />} tone="amber" /><Metric title="Deliveries this month" value={String(overview.summary?.delivery_count || 0)} note="Successfully saved deliveries" icon={<PackageCheck />} tone="blue" /></section><section className="panel"><PanelHead title="Recent deliveries" subtitle="Your personal delivery history" action={<Button variant="ghost" onClick={() => menuClick('Delivery History')}>Full history <ArrowRight size={15} /></Button>} /><DeliveryTable rows={deliveries.slice(0, 8)} /></section></>}
  </>}
+ {page === 'Dashboard' && isSupplier && <section className="panel supplier-dashboard"><PanelHead title={supplierProfile?.list_name || 'Supplier account'} subtitle="Your supplier sign-in is connected to Kakarla Dairy Farm." /><div className="metrics-grid metrics-grid--compact"><Metric title="Supplier" value={supplierProfile?.name || user.name} note="Registered supplier" icon={<UserRound />} /><Metric title="Assigned list" value={supplierProfile?.list_name || 'Not assigned'} note="Your collection list" icon={<ClipboardList />} tone="mint" /><Metric title="Contact" value={supplierProfile?.phone || '—'} note={supplierProfile?.username ? `Username: ${supplierProfile.username}` : 'Contact the dairy owner'} icon={<Milk />} tone="blue" /></div></section>}
+ {page === 'Suppliers' && isOwner && <section className="panel"><PanelHead title="Suppliers" subtitle={`${suppliers.length} supplier accounts from the existing records`} /><div className="table-wrap"><table><thead><tr><th>Supplier</th><th>Phone</th><th>Collection list</th><th>Username</th><th>Login</th><th className="table-actions-heading">Actions</th></tr></thead><tbody>{suppliers.map(supplier => <tr key={supplier.id}><td><b>{supplier.name}</b></td><td>{supplier.phone}</td><td>{supplier.list_name || '—'}</td><td><code>{supplier.username || 'Not set'}</code></td><td><span className={`status ${supplier.login_enabled ? 'status-ok' : ''}`}>{supplier.login_enabled ? 'Enabled' : 'Password required'}</span></td><td><div className="table-row-actions"><Button variant="secondary" disabled={!supplier.username} onClick={() => { setSupplierToChangePassword(supplier); setSupplierPassword(''); setModal('supplier-password'); }}>{supplier.login_enabled ? 'Change password' : 'Set password'}</Button></div></td></tr>)}</tbody></table>{!suppliers.length && <Empty label="No supplier records yet" />}</div></section>}
  {page === 'Customers' && isOwner && <section className="panel"><PanelHead title="Customer management" subtitle={`${customers.length} active customer records`} action={<Button onClick={openCustomerForm}><Plus size={16} /> Add customer</Button>} /><Toolbar search={search} setSearch={setSearch} placeholder="Search name, phone or customer code" /><CustomerTable rows={filtered} onQr={openQr} onDeliver={c => {
           setSelectedCustomer(c);
           setDeliveryForm({
@@ -1073,6 +1100,7 @@ export default function App() {
               })} /></Field></div><div className="modal-actions"><Button variant="secondary" onClick={() => setModal('')}>Cancel</Button><Button type="submit">Save payment <Check size={16} /></Button></div></form>}
  {modal === 'temporary' && <form onSubmit={saveTemporaryDelivery}><span className="eyebrow">ONE-TIME DELIVERY</span><h2>Record an “Others” delivery</h2><p className="modal-sub">This records a temporary delivery and charge without adding a customer login.</p><Field label="Customer phone number"><input type="tel" inputMode="tel" required value={temporaryDelivery.phone} onChange={event => setTemporaryDelivery({ ...temporaryDelivery, phone: event.target.value })} /></Field><div className="form-grid"><Field label="Milk type"><select value={temporaryDelivery.milk_type} onChange={event => setTemporaryDelivery({ ...temporaryDelivery, milk_type: event.target.value })}><option value="cow">Cow milk</option><option value="buffalo">Buffalo milk</option></select></Field><Field label="Quantity (litres)"><input type="number" min="0.1" max="100" step="0.1" required value={temporaryDelivery.quantity_litres} onChange={event => setTemporaryDelivery({ ...temporaryDelivery, quantity_litres: event.target.value })} /></Field><Field label="Routine"><select value={temporaryDelivery.routine} onChange={event => setTemporaryDelivery({ ...temporaryDelivery, routine: event.target.value })}><option value="morning">Morning</option><option value="evening">Evening</option><option value="other">Other</option></select></Field></div><div className="amount-preview"><small>Price is calculated using the current milk rate.</small><b>{money(Number(temporaryDelivery.quantity_litres) * Number(rates.find(rate => rate.milk_type === temporaryDelivery.milk_type)?.rate_per_litre || 0))}</b></div><div className="modal-actions"><Button variant="secondary" onClick={() => setModal('')}>Cancel</Button><Button type="submit">Record delivery <Check size={16} /></Button></div></form>}
  {modal === 'scan' && <div><span className="eyebrow">QR CUSTOMER LOOKUP</span><h2>Identify customer</h2><p className="modal-sub">Scan a customer QR code or enter the customer code / decoded QR content.</p><Field label="Customer code or QR payload"><input autoFocus value={scanCode} onChange={e => setScanCode(e.target.value)} placeholder="Paste code or scan result" /></Field><div className="modal-actions scan-actions"><Button variant="secondary" onClick={() => { setModal(''); setShowScanner(false); window.setTimeout(() => setShowScanner(true), 0); }}><ScanLine size={16} /> Open camera scanner</Button><Button onClick={() => beginScan(scanCode)} disabled={!scanCode.trim()}>Find customer <ArrowRight size={16} /></Button></div></div>}
+ {modal === 'supplier-password' && supplierToChangePassword && <form onSubmit={saveSupplierPassword}><span className="eyebrow">SUPPLIER ACCOUNT</span><h2>{supplierToChangePassword.login_enabled ? 'Change supplier password' : 'Set up supplier login'}</h2><p className="modal-sub">Username: <b>{supplierToChangePassword.username}</b>. Share the new password securely; it will not be displayed again.</p><Field label="New password (at least 8 characters)"><input type="password" required minLength={8} maxLength={128} autoComplete="new-password" value={supplierPassword} onChange={event => setSupplierPassword(event.target.value)} /></Field><div className="modal-actions"><Button variant="secondary" onClick={() => { setModal(''); setSupplierToChangePassword(null); setSupplierPassword(''); }}>Cancel</Button><Button type="submit">Save supplier password <Check size={16} /></Button></div></form>}
  {modal === 'qr' && <div className="qr-modal"><span className="eyebrow">MILKMATE CUSTOMER QR</span><h2>{selectedCustomer?.name || user?.name}</h2><p className="modal-sub">Scan this code to identify the customer.</p>{qrData && <img src={qrData} alt="Customer QR" />}<b>{selectedCustomer?.customer_code}</b><Button variant="secondary" onClick={() => setModal('')}>Done</Button></div>}
  </section></div>}{showScanner && <Scanner onResult={beginScan} onClose={() => { setShowScanner(false); setModal(''); }} onError={setError} onOthers={() => { setShowScanner(false); setModal('temporary'); }} onAssigned={() => { setShowScanner(false); menuClick('My Customers'); }} />}
  </div>;
@@ -1133,7 +1161,7 @@ function LoginPanel({
      <form onSubmit={resetMode ? onConfirmReset : onSignIn} className="login-card">
        <span className="eyebrow">{resetMode ? 'ACCOUNT RECOVERY' : 'WELCOME BACK'}</span>
        <h2>{resetMode ? 'Reset your password' : 'Sign in to Kakarla Dairy Farm'}</h2>
-       <p>{resetMode ? 'We will send a one-time code to the phone number on your account.' : 'Sign in with the email address or phone number registered to your account.'}</p>
+       <p>{resetMode ? 'We will send a one-time code to the phone number on your account.' : 'Sign in with your email, phone number, or supplier username.'}</p>
        {error && <div className="alert alert-error">{error}</div>}
        {success && <div className="alert alert-success">{success}</div>}
        <Field label={resetMode ? 'Phone number' : 'Email or phone number'}>
@@ -1327,7 +1355,7 @@ function NotificationCenter({
  </section>;
 }
 function roleLabel(role: User['role']) {
-  return role === 'super_admin' ? 'Super Admin' : role === 'delivery_boy' ? 'Delivery Boy' : 'Customer';
+  return role === 'super_admin' ? 'Super Admin' : role === 'delivery_boy' ? 'Delivery Boy' : role === 'supplier' ? 'Supplier' : 'Customer';
 }
 function initials(name: string) {
   return name.split(' ').map(s => s[0]).slice(0, 2).join('').toUpperCase();
