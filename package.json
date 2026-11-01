@@ -1,0 +1,20 @@
+{
+  "name": "kakarla-dairy-farm",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -k \"npm:backend:dev\" \"npm:frontend:dev\"",
+    "backend:dev": "npm run dev --workspace backend",
+    "frontend:dev": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace backend",
+    "create-admin": "npm run create-admin --workspace backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
